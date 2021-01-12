@@ -264,6 +264,12 @@ int SYM(fseek)(FILE *stream, long offset, int whence) {
   return result;
 }
 
+void SYM(rewind)(FILE *stream) {
+  inputOffset = 0;
+  _sym_set_return_expression(nullptr);
+  rewind(stream);
+}
+
 int SYM(getc)(FILE *stream) {
   auto result = getc(stream);
   if (result == EOF) {
