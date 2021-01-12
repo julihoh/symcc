@@ -56,6 +56,16 @@ template <typename E, typename F>
 void tryAlternative(E *value, SymExpr valueExpr, F caller) {
   tryAlternative(reinterpret_cast<intptr_t>(value), valueExpr, caller);
 }
+
+/// Indicates whether the input byte at `offset` should be symbolized according
+/// to the selective symbolization configuration.
+bool should_symbolize(size_t offset) {
+  if (g_config.selective_symbolization_enabled) {
+    printf("%zu\n", offset);
+    return g_config.offsets_to_symbolize.count(offset) > 0;
+  }
+  return true;
+}
 } // namespace
 
 void initLibcWrappers() {
@@ -137,8 +147,10 @@ ssize_t SYM(read)(int fildes, void *buf, size_t nbyte) {
   if (fildes == inputFileDescriptor) {
     // Reading symbolic input.
     ReadWriteShadow shadow(buf, result);
-    std::generate(shadow.begin(), shadow.end(),
-                  []() { return _sym_get_input_byte(inputOffset++); });
+    std::generate(shadow.begin(), shadow.end(), []() {
+      auto offset = inputOffset++;
+      return should_symbolize(offset) ? _sym_get_input_byte(offset) : nullptr;
+    });
   } else if (!isConcrete(buf, result)) {
     ReadWriteShadow shadow(buf, result);
     std::fill(shadow.begin(), shadow.end(), nullptr);
@@ -236,8 +248,10 @@ size_t SYM(fread)(void *ptr, size_t size, size_t nmemb, FILE *stream) {
   if (fileno(stream) == inputFileDescriptor) {
     // Reading symbolic input.
     ReadWriteShadow shadow(ptr, result * size);
-    std::generate(shadow.begin(), shadow.end(),
-                  []() { return _sym_get_input_byte(inputOffset++); });
+    std::generate(shadow.begin(), shadow.end(), []() {
+      auto offset = inputOffset++;
+      return should_symbolize(offset) ? _sym_get_input_byte(offset) : nullptr;
+    });
   } else if (!isConcrete(ptr, result * size)) {
     ReadWriteShadow shadow(ptr, result * size);
     std::fill(shadow.begin(), shadow.end(), nullptr);
@@ -277,10 +291,16 @@ int SYM(getc)(FILE *stream) {
     return result;
   }
 
-  if (fileno(stream) == inputFileDescriptor)
-    _sym_set_return_expression(_sym_build_zext(
-        _sym_get_input_byte(inputOffset++), sizeof(int) * 8 - 8));
-  else
+  if (fileno(stream) == inputFileDescriptor) {
+    auto offset = inputOffset++;
+    if (should_symbolize(offset)) {
+      _sym_set_return_expression(_sym_build_zext(
+          _sym_get_input_byte(inputOffset++), sizeof(int) * 8 - 8));
+    } else {
+
+      _sym_set_return_expression(nullptr);
+    }
+  } else
     _sym_set_return_expression(nullptr);
 
   return result;

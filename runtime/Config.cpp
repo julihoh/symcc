@@ -19,6 +19,7 @@
 #include <limits>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_set>
 
 namespace {
 
@@ -36,6 +37,23 @@ bool checkFlagString(std::string value) {
   throw std::runtime_error(msg.str());
 }
 
+/// Parses an option in the format of "1,2,3", returning the set of all listed
+/// numbers. throws on malformed input.
+std::unordered_set<size_t> parse_selective_input_option(const char *offsets) {
+  std::unordered_set<size_t> offsets_to_symbolize;
+
+  std::string offsets_to_symbolize_str(offsets);
+  std::stringstream ss(offsets_to_symbolize_str);
+
+  for (size_t i; ss >> i;) {
+    offsets_to_symbolize.insert(i);
+    if (ss.peek() == ',')
+      ss.ignore();
+  }
+
+  return offsets_to_symbolize;
+}
+
 } // namespace
 
 Config g_config;
@@ -44,6 +62,22 @@ void loadConfig() {
   auto *fullyConcrete = getenv("SYMCC_NO_SYMBOLIC_INPUT");
   if (fullyConcrete != nullptr)
     g_config.fullyConcrete = checkFlagString(fullyConcrete);
+
+  auto *selective_input = getenv("SYMCC_SELECTIVE_INPUT");
+  if (selective_input != nullptr) {
+    // Example: $ SYMCC_SELECTIVE_INPUT=0,1,2 ./program < input
+    // will only symbolize the first 3 bytes of the input
+    g_config.offsets_to_symbolize =
+        parse_selective_input_option(selective_input);
+    if (g_config.offsets_to_symbolize.size() == 0) {
+      std::stringstream msg;
+      msg << "Selective symbolization was enabled, but no valid offsets "
+             "specified (original parameter: "
+          << selective_input << ")";
+      throw std::runtime_error(msg.str());
+    }
+    g_config.selective_symbolization_enabled = true;
+  }
 
   auto *outputDir = getenv("SYMCC_OUTPUT_DIR");
   if (outputDir != nullptr)

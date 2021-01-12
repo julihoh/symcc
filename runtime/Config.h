@@ -16,6 +16,7 @@
 #define CONFIG_H
 
 #include <string>
+#include <unordered_set>
 
 struct Config {
   /// Should we allow symbolic data in the program?
@@ -50,6 +51,12 @@ struct Config {
   /// 2GB on most workloads because requiring that amount of memory per core
   /// participating in the analysis seems reasonable.
   size_t garbageCollectionThreshold = 5'000'000;
+
+  /// This indicates whether only some bytes of the input should be symbolized.
+  /// If true, `offsets_to_symbolize` indicates which offsets should be
+  /// symbolized (allow_list approach)
+  bool selective_symbolization_enabled = false;
+  std::unordered_set<std::size_t> offsets_to_symbolize;
 };
 
 /// The global configuration object.
